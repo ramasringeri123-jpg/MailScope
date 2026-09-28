@@ -1,0 +1,22 @@
+From: security@example.test
+To: user@example.test
+Subject: URGENT Account Verification Required
+Date: Mon, 28 Sep 2026 19:00:00 +0530
+Message-ID: <mailscope-test-001@example.test>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+URGENT!
+
+Your account requires immediate verification.
+
+Please verify your account before it is suspended.
+
+Password: TestPassword123
+
+Send your wallet recovery phrase if requested.
+
+Visit:
+https://secure-login.example.com/verify
+
+This is your final warning.

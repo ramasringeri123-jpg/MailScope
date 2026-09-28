@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Generated email data
+data/inbox/*
+data/incidents/*
+
+# TLS private keys / certificates
+*.key
+*.pem
+
+# Local logs
+*.log
+
+*.crt
