@@ -1,8 +1,36 @@
 import tkinter as tk
-from tkinter import scrolledtext, filedialog, messagebox
+from tkinter import scrolledtext
+import os
+import time
 import threading
 
-from ingestion.email_analyzer import EmailAnalyzer
+
+# ============================================================
+# MAILSCOPE
+# AUTONOMOUS SECURITY DASHBOARD
+# ============================================================
+
+BASE_DIR = os.path.dirname(
+    os.path.dirname(
+        os.path.abspath(__file__)
+    )
+)
+
+INBOX_DIR = os.path.join(
+    BASE_DIR,
+    "data",
+    "inbox"
+)
+
+INCIDENT_DIR = os.path.join(
+    INBOX_DIR,
+    "incidents"
+)
+
+PROCESSED_DIR = os.path.join(
+    INBOX_DIR,
+    "processed"
+)
 
 
 class MailScopeDashboard:
@@ -12,29 +40,41 @@ class MailScopeDashboard:
         self.root = root
 
         self.root.title(
-            "MailScope — Email Security Analyzer"
+            "MailScope — Autonomous Email Security"
         )
 
-        self.root.geometry("1150x760")
-        self.root.minsize(950, 650)
+        self.root.geometry(
+            "1250x780"
+        )
+
+        self.root.minsize(
+            1050,
+            680
+        )
 
         self.root.configure(
             bg="#0b0f14"
         )
 
-        self.analyzer = EmailAnalyzer()
+        self.last_incidents = set()
+        self.last_processed = set()
+
+        self.total_threats = 0
+        self.total_safe = 0
 
         self.build_interface()
 
-    # =========================================================
+        self.start_monitor()
+
+    # ========================================================
     # INTERFACE
-    # =========================================================
+    # ========================================================
 
     def build_interface(self):
 
-        # -----------------------------------------------------
+        # ----------------------------------------------------
         # HEADER
-        # -----------------------------------------------------
+        # ----------------------------------------------------
 
         header = tk.Frame(
             self.root,
@@ -44,6 +84,10 @@ class MailScopeDashboard:
 
         header.pack(
             fill="x"
+        )
+
+        header.pack_propagate(
+            False
         )
 
         tk.Label(
@@ -59,7 +103,7 @@ class MailScopeDashboard:
 
         tk.Label(
             header,
-            text="EMAIL SECURITY ENGINE",
+            text="AUTONOMOUS EMAIL SECURITY AGENT",
             font=("Segoe UI", 10),
             fg="#8b98a8",
             bg="#111820"
@@ -69,7 +113,7 @@ class MailScopeDashboard:
 
         self.status_label = tk.Label(
             header,
-            text="● PROTECTION READY",
+            text="● PROTECTION ACTIVE",
             font=("Segoe UI", 11, "bold"),
             fg="#42d392",
             bg="#111820"
@@ -80,9 +124,9 @@ class MailScopeDashboard:
             padx=30
         )
 
-        # -----------------------------------------------------
+        # ----------------------------------------------------
         # MAIN
-        # -----------------------------------------------------
+        # ----------------------------------------------------
 
         main = tk.Frame(
             self.root,
@@ -96,9 +140,51 @@ class MailScopeDashboard:
             pady=20
         )
 
-        # -----------------------------------------------------
-        # LEFT
-        # -----------------------------------------------------
+        # ----------------------------------------------------
+        # STAT CARDS
+        # ----------------------------------------------------
+
+        stats = tk.Frame(
+            main,
+            bg="#0b0f14"
+        )
+
+        stats.pack(
+            fill="x",
+            pady=(0, 15)
+        )
+
+        self.create_stat_card(
+            stats,
+            "EMAILS PROCESSED",
+            "0",
+            0
+        )
+
+        self.threat_value = self.create_stat_card(
+            stats,
+            "THREATS ISOLATED",
+            "0",
+            1
+        )
+
+        self.safe_value = self.create_stat_card(
+            stats,
+            "SAFE EMAILS",
+            "0",
+            2
+        )
+
+        self.create_stat_card(
+            stats,
+            "ENGINE",
+            "ACTIVE",
+            3
+        )
+
+        # ----------------------------------------------------
+        # LEFT PANEL
+        # ----------------------------------------------------
 
         left = tk.Frame(
             main,
@@ -109,12 +195,12 @@ class MailScopeDashboard:
             side="left",
             fill="both",
             expand=True,
-            padx=(0, 10)
+            padx=(0, 8)
         )
 
         tk.Label(
             left,
-            text="EMAIL INSPECTION",
+            text="LATEST SECURITY EVENT",
             font=("Segoe UI", 13, "bold"),
             fg="#ffffff",
             bg="#111820"
@@ -124,81 +210,61 @@ class MailScopeDashboard:
             pady=(20, 10)
         )
 
-        self.file_label = tk.Label(
+        self.event_label = tk.Label(
             left,
-            text="No email loaded",
-            font=("Segoe UI", 10),
-            fg="#8b98a8",
+            text="WAITING FOR EMAIL...",
+            font=("Segoe UI", 22, "bold"),
+            fg="#42d392",
             bg="#111820"
         )
 
-        self.file_label.pack(
-            anchor="w",
-            padx=20
+        self.event_label.pack(
+            pady=(15, 5)
         )
 
-        self.email_box = scrolledtext.ScrolledText(
+        self.event_score = tk.Label(
             left,
-            height=22,
+            text="Risk Score: -- / 100",
+            font=("Segoe UI", 15),
+            fg="#aab6c5",
+            bg="#111820"
+        )
+
+        self.event_score.pack()
+
+        self.action_label = tk.Label(
+            left,
+            text="ACTION: WAITING",
+            font=("Segoe UI", 14, "bold"),
+            fg="#ffffff",
+            bg="#111820"
+        )
+
+        self.action_label.pack(
+            pady=15
+        )
+
+        self.event_box = scrolledtext.ScrolledText(
+            left,
+            height=18,
             font=("Consolas", 10),
             bg="#080c10",
             fg="#dce6f2",
-            insertbackground="white",
             relief="flat",
-            wrap="word"
-        )
-
-        self.email_box.pack(
-            fill="both",
-            expand=True,
-            padx=20,
-            pady=10
-        )
-
-        # -----------------------------------------------------
-        # IMPORT
-        # -----------------------------------------------------
-
-        self.import_button = tk.Button(
-            left,
-            text="📂  IMPORT .EML EMAIL",
-            command=self.import_email,
-            font=("Segoe UI", 11, "bold"),
-            bg="#1d6fff",
-            fg="white",
-            activebackground="#1557c7",
-            relief="flat",
-            pady=12
-        )
-
-        self.import_button.pack(
-            fill="x",
-            padx=20,
-            pady=(5, 10)
-        )
-
-        self.scan_button = tk.Button(
-            left,
-            text="▶  ANALYZE EMAIL",
-            command=self.analyze_loaded_email,
-            font=("Segoe UI", 11, "bold"),
-            bg="#18251f",
-            fg="#42d392",
-            activebackground="#24382e",
-            relief="flat",
-            pady=12,
+            wrap="word",
             state="disabled"
         )
 
-        self.scan_button.pack(
-            fill="x",
+        self.event_box.pack(
+            fill="both",
+            expand=True,
             padx=20,
-            pady=(0, 20)
+            pady=(5, 20)
         )
 
-        # -----------------------------------------------------
-        # RIGHT
-        # -----------------------------------------------------
+        # ----------------------------------------------------
+        # RIGHT PANEL
+        # ----------------------------------------------------
 
         right = tk.Frame(
             main,
@@ -209,12 +275,12 @@ class MailScopeDashboard:
             side="right",
             fill="both",
             expand=True,
-            padx=(10, 0)
+            padx=(8, 0)
         )
 
         tk.Label(
             right,
-            text="SECURITY ASSESSMENT",
+            text="INCIDENT MONITOR",
             font=("Segoe UI", 13, "bold"),
             fg="#ffffff",
             bg="#111820"
@@ -224,462 +290,516 @@ class MailScopeDashboard:
             pady=(20, 10)
         )
 
-        self.risk_label = tk.Label(
+        self.incident_box = scrolledtext.ScrolledText(
             right,
-            text="READY",
-            font=("Segoe UI", 28, "bold"),
-            fg="#42d392",
-            bg="#111820"
-        )
-
-        self.risk_label.pack(
-            pady=(10, 0)
-        )
-
-        self.score_label = tk.Label(
-            right,
-            text="-- / 100",
-            font=("Segoe UI", 18),
-            fg="#aab6c5",
-            bg="#111820"
-        )
-
-        self.score_label.pack()
-
-        self.canvas = tk.Canvas(
-            right,
-            height=30,
+            height=18,
+            font=("Consolas", 10),
             bg="#080c10",
-            highlightthickness=0
+            fg="#dce6f2",
+            relief="flat",
+            wrap="word",
+            state="disabled"
         )
 
-        self.canvas.pack(
-            fill="x",
-            padx=30,
-            pady=20
-        )
-
-        self.action_label = tk.Label(
-            right,
-            text="ACTION: —",
-            font=("Segoe UI", 15, "bold"),
-            fg="#ffffff",
-            bg="#111820"
-        )
-
-        self.action_label.pack()
-
-        # -----------------------------------------------------
-        # EMAIL INFORMATION
-        # -----------------------------------------------------
-
-        self.metadata_label = tk.Label(
-            right,
-            text="No email loaded",
-            justify="left",
-            anchor="w",
-            font=("Consolas", 9),
-            fg="#8b98a8",
-            bg="#111820"
-        )
-
-        self.metadata_label.pack(
-            fill="x",
+        self.incident_box.pack(
+            fill="both",
+            expand=True,
             padx=20,
-            pady=(15, 5)
+            pady=(5, 10)
         )
 
         tk.Label(
             right,
-            text="DETECTED INDICATORS",
+            text="PROCESSED SAFE EMAILS",
             font=("Segoe UI", 11, "bold"),
             fg="#8b98a8",
             bg="#111820"
         ).pack(
             anchor="w",
             padx=20,
-            pady=(10, 5)
+            pady=(5, 5)
         )
 
-        self.findings_box = scrolledtext.ScrolledText(
+        self.safe_box = scrolledtext.ScrolledText(
             right,
-            height=16,
-            font=("Consolas", 10),
+            height=7,
+            font=("Consolas", 9),
             bg="#080c10",
-            fg="#dce6f2",
+            fg="#42d392",
             relief="flat",
-            state="disabled",
-            wrap="word"
+            wrap="word",
+            state="disabled"
         )
 
-        self.findings_box.pack(
-            fill="both",
-            expand=True,
+        self.safe_box.pack(
+            fill="x",
             padx=20,
             pady=(0, 20)
         )
 
-        self.loaded_file = None
+    # ========================================================
+    # STAT CARD
+    # ========================================================
 
-    # =========================================================
-    # IMPORT EMAIL
-    # =========================================================
+    def create_stat_card(
+        self,
+        parent,
+        title,
+        value,
+        column
+    ):
 
-    def import_email(self):
-
-        file_path = filedialog.askopenfilename(
-            title="Select an email",
-            filetypes=[
-                (
-                    "Email files",
-                    "*.eml"
-                ),
-                (
-                    "All files",
-                    "*.*"
-                )
-            ]
+        card = tk.Frame(
+            parent,
+            bg="#111820",
+            height=90
         )
 
-        if not file_path:
-            return
-
-        try:
-
-            email = self.analyzer.parser.parse_file(
-                file_path
-            )
-
-            self.loaded_file = file_path
-
-            self.file_label.config(
-                text=file_path
-            )
-
-            self.email_box.delete(
-                "1.0",
-                tk.END
-            )
-
-            self.email_box.insert(
-                tk.END,
-                email["body"]
-            )
-
-            metadata = (
-                f"FROM      : {email['sender']}\n"
-                f"TO        : {email['recipient']}\n"
-                f"SUBJECT   : {email['subject']}\n"
-                f"ATTACHMENTS: {email['attachment_count']}"
-            )
-
-            self.metadata_label.config(
-                text=metadata
-            )
-
-            self.scan_button.config(
-                state="normal"
-            )
-
-            self.set_status(
-                "● EMAIL LOADED",
-                "#42d392"
-            )
-
-            self.reset_result()
-
-        except Exception as error:
-
-            messagebox.showerror(
-                "MailScope",
-                f"Could not read email:\n\n{error}"
-            )
-
-    # =========================================================
-    # ANALYZE
-    # =========================================================
-
-    def analyze_loaded_email(self):
-
-        if not self.loaded_file:
-            return
-
-        self.scan_button.config(
-            state="disabled",
-            text="SCANNING..."
+        card.grid(
+            row=0,
+            column=column,
+            sticky="nsew",
+            padx=5
         )
 
-        self.import_button.config(
-            state="disabled"
+        parent.grid_columnconfigure(
+            column,
+            weight=1
         )
 
-        self.set_status(
-            "● ANALYZING EMAIL",
-            "#4da6ff"
+        tk.Label(
+            card,
+            text=title,
+            font=("Segoe UI", 9, "bold"),
+            fg="#8b98a8",
+            bg="#111820"
+        ).pack(
+            pady=(15, 0)
         )
+
+        value_label = tk.Label(
+            card,
+            text=value,
+            font=("Segoe UI", 20, "bold"),
+            fg="#ffffff",
+            bg="#111820"
+        )
+
+        value_label.pack(
+            pady=(2, 10)
+        )
+
+        return value_label
+
+    # ========================================================
+    # MONITOR
+    # ========================================================
+
+    def start_monitor(self):
 
         thread = threading.Thread(
-            target=self.run_analysis,
+            target=self.monitor_loop,
             daemon=True
         )
 
         thread.start()
 
-    # =========================================================
-    # ANALYSIS THREAD
-    # =========================================================
+    # ========================================================
+    # MONITOR LOOP
+    # ========================================================
 
-    def run_analysis(self):
+    def monitor_loop(self):
 
-        try:
+        while True:
 
-            result = self.analyzer.analyze_file(
-                self.loaded_file
-            )
+            try:
 
-            self.root.after(
-                0,
-                lambda: self.display_result(result)
-            )
-
-        except Exception as error:
-
-            self.root.after(
-                0,
-                lambda: self.show_error(error)
-            )
-
-    # =========================================================
-    # DISPLAY RESULT
-    # =========================================================
-
-    def display_result(self, result):
-
-        security = result["security"]
-
-        risk = security["severity"]
-        score = security["risk_score"]
-
-        if risk == "CRITICAL":
-
-            color = "#ff4d4d"
-            action = "BLOCK"
-
-        elif risk == "HIGH":
-
-            color = "#ff8c42"
-            action = "WARN"
-
-        elif risk == "MEDIUM":
-
-            color = "#ffd166"
-            action = "REVIEW"
-
-        else:
-
-            color = "#42d392"
-            action = "ALLOW"
-
-        self.risk_label.config(
-            text=f"● {risk}",
-            fg=color
-        )
-
-        self.score_label.config(
-            text=f"{score} / 100"
-        )
-
-        self.action_label.config(
-            text=f"ACTION: {action}",
-            fg=color
-        )
-
-        # -----------------------------------------------------
-        # RISK BAR
-        # -----------------------------------------------------
-
-        self.canvas.delete(
-            "all"
-        )
-
-        width = self.canvas.winfo_width()
-
-        if width < 10:
-            width = 400
-
-        filled = int(
-            width * score / 100
-        )
-
-        self.canvas.create_rectangle(
-            0,
-            0,
-            width,
-            30,
-            fill="#1b222b",
-            outline=""
-        )
-
-        self.canvas.create_rectangle(
-            0,
-            0,
-            filled,
-            30,
-            fill=color,
-            outline=""
-        )
-
-        # -----------------------------------------------------
-        # FINDINGS
-        # -----------------------------------------------------
-
-        self.findings_box.config(
-            state="normal"
-        )
-
-        self.findings_box.delete(
-            "1.0",
-            tk.END
-        )
-
-        findings = security["findings"]
-
-        if not findings:
-
-            self.findings_box.insert(
-                tk.END,
-                "✓ NO THREATS DETECTED\n\n"
-                "The email passed the current "
-                "MailScope security checks."
-            )
-
-        else:
-
-            for finding in findings:
-
-                severity = finding.get(
-                    "severity",
-                    "INFO"
+                incidents = self.get_files(
+                    INCIDENT_DIR
                 )
 
-                title = finding.get(
-                    "title",
-                    finding.get(
-                        "type",
-                        "Unknown"
+                processed = self.get_files(
+                    PROCESSED_DIR
+                )
+
+                self.root.after(
+                    0,
+                    lambda i=incidents, p=processed:
+                    self.update_dashboard(i, p)
+                )
+
+            except Exception as error:
+
+                print(
+                    f"[GUI MONITOR ERROR] {error}"
+                )
+
+            time.sleep(2)
+
+    # ========================================================
+    # FILE DISCOVERY
+    # ========================================================
+
+    def get_files(self, directory):
+
+        if not os.path.exists(directory):
+
+            os.makedirs(
+                directory,
+                exist_ok=True
+            )
+
+            return []
+
+        files = []
+
+        for filename in os.listdir(directory):
+
+            path = os.path.join(
+                directory,
+                filename
+            )
+
+            if os.path.isfile(path):
+
+                files.append(
+                    (
+                        filename,
+                        os.path.getmtime(path)
                     )
                 )
 
-                message = finding.get(
-                    "message",
-                    ""
-                )
-
-                self.findings_box.insert(
-                    tk.END,
-                    f"[{severity}] {title}\n"
-                )
-
-                self.findings_box.insert(
-                    tk.END,
-                    f"    {message}\n\n"
-                )
-
-        self.findings_box.config(
-            state="disabled"
+        files.sort(
+            key=lambda x: x[1],
+            reverse=True
         )
 
-        self.set_status(
-            f"● ANALYSIS COMPLETE — {risk}",
-            color
+        return files
+
+    # ========================================================
+    # DASHBOARD UPDATE
+    # ========================================================
+
+    def update_dashboard(
+        self,
+        incidents,
+        processed
+    ):
+
+        incident_names = {
+            item[0]
+            for item in incidents
+        }
+
+        processed_names = {
+            item[0]
+            for item in processed
+        }
+
+        # -----------------------------------------------
+        # COUNTERS
+        # -----------------------------------------------
+
+        self.total_threats = len(
+            incidents
         )
 
-        self.scan_button.config(
-            state="normal",
-            text="▶  ANALYZE EMAIL"
+        self.total_safe = len(
+            processed
         )
 
-        self.import_button.config(
+        total = (
+            self.total_threats
+            +
+            self.total_safe
+        )
+
+        self.threat_value.config(
+            text=str(
+                self.total_threats
+            )
+        )
+
+        self.safe_value.config(
+            text=str(
+                self.total_safe
+            )
+        )
+
+        # -----------------------------------------------
+        # INCIDENT LIST
+        # -----------------------------------------------
+
+        self.set_text(
+            self.incident_box,
+            self.format_incidents(
+                incidents
+            )
+        )
+
+        # -----------------------------------------------
+        # SAFE LIST
+        # -----------------------------------------------
+
+        self.set_text(
+            self.safe_box,
+            self.format_safe(
+                processed
+            )
+        )
+
+        # -----------------------------------------------
+        # NEW THREAT
+        # -----------------------------------------------
+
+        new_incidents = (
+            incident_names
+            -
+            self.last_incidents
+        )
+
+        if new_incidents:
+
+            newest = incidents[0][0]
+
+            self.show_event(
+                newest,
+                True,
+                len(incidents)
+            )
+
+        elif (
+            not self.last_incidents
+            and incidents
+        ):
+
+            newest = incidents[0][0]
+
+            self.show_event(
+                newest,
+                True,
+                len(incidents)
+            )
+
+        # -----------------------------------------------
+        # NEW SAFE EMAIL
+        # -----------------------------------------------
+
+        elif (
+            processed_names
+            -
+            self.last_processed
+        ):
+
+            newest = processed[0][0]
+
+            self.show_event(
+                newest,
+                False,
+                len(incidents)
+            )
+
+        elif (
+            not self.last_processed
+            and processed
+            and not incidents
+        ):
+
+            newest = processed[0][0]
+
+            self.show_event(
+                newest,
+                False,
+                0
+            )
+
+        self.last_incidents = incident_names
+        self.last_processed = processed_names
+
+    # ========================================================
+    # SHOW EVENT
+    # ========================================================
+
+    def show_event(
+        self,
+        filename,
+        threat,
+        incident_count
+    ):
+
+        if threat:
+
+            self.event_label.config(
+                text="● CRITICAL THREAT",
+                fg="#ff4d4d"
+            )
+
+            self.event_score.config(
+                text="Risk Score: HIGH / CRITICAL",
+                fg="#ff4d4d"
+            )
+
+            self.action_label.config(
+                text="ACTION: EMAIL ISOLATED",
+                fg="#ff4d4d"
+            )
+
+            message = (
+                "MAILSCOPE AUTONOMOUS RESPONSE\n"
+                "----------------------------------------\n\n"
+                f"Incident: {filename}\n\n"
+                "Threat detected by the autonomous\n"
+                "email security pipeline.\n\n"
+                "The email has been moved into the\n"
+                "incident isolation directory.\n\n"
+                "STATUS: BLOCKED / ISOLATED"
+            )
+
+        else:
+
+            self.event_label.config(
+                text="● SAFE EMAIL",
+                fg="#42d392"
+            )
+
+            self.event_score.config(
+                text="Risk Score: 0 / 100",
+                fg="#42d392"
+            )
+
+            self.action_label.config(
+                text="ACTION: EMAIL ARCHIVED",
+                fg="#42d392"
+            )
+
+            message = (
+                "MAILSCOPE SECURITY RESPONSE\n"
+                "----------------------------------------\n\n"
+                f"Email: {filename}\n\n"
+                "No threat indicators were detected.\n\n"
+                "The email passed the security checks\n"
+                "and was moved to processed storage.\n\n"
+                "STATUS: SAFE / ALLOWED"
+            )
+
+        self.set_text(
+            self.event_box,
+            message
+        )
+
+    # ========================================================
+    # FORMAT INCIDENTS
+    # ========================================================
+
+    def format_incidents(
+        self,
+        incidents
+    ):
+
+        if not incidents:
+
+            return (
+                "No isolated incidents.\n\n"
+                "MailScope is monitoring the inbox."
+            )
+
+        lines = []
+
+        for filename, timestamp in incidents:
+
+            event_time = time.strftime(
+                "%Y-%m-%d %H:%M:%S",
+                time.localtime(timestamp)
+            )
+
+            lines.append(
+                "[THREAT ISOLATED]"
+            )
+
+            lines.append(
+                f"File      : {filename}"
+            )
+
+            lines.append(
+                f"Detected  : {event_time}"
+            )
+
+            lines.append(
+                "Action    : BLOCK / ISOLATE"
+            )
+
+            lines.append(
+                ""
+            )
+
+        return "\n".join(
+            lines
+        )
+
+    # ========================================================
+    # FORMAT SAFE EMAILS
+    # ========================================================
+
+    def format_safe(
+        self,
+        processed
+    ):
+
+        if not processed:
+
+            return (
+                "No processed safe emails."
+            )
+
+        lines = []
+
+        for filename, timestamp in processed:
+
+            event_time = time.strftime(
+                "%H:%M:%S",
+                time.localtime(timestamp)
+            )
+
+            lines.append(
+                f"[SAFE] {filename}  {event_time}"
+            )
+
+        return "\n".join(
+            lines
+        )
+
+    # ========================================================
+    # TEXT HELPER
+    # ========================================================
+
+    def set_text(
+        self,
+        widget,
+        text
+    ):
+
+        widget.config(
             state="normal"
         )
 
-    # =========================================================
-    # RESET
-    # =========================================================
-
-    def reset_result(self):
-
-        self.risk_label.config(
-            text="READY",
-            fg="#42d392"
-        )
-
-        self.score_label.config(
-            text="-- / 100"
-        )
-
-        self.action_label.config(
-            text="ACTION: —",
-            fg="#ffffff"
-        )
-
-        self.findings_box.config(
-            state="normal"
-        )
-
-        self.findings_box.delete(
+        widget.delete(
             "1.0",
             tk.END
         )
 
-        self.findings_box.config(
+        widget.insert(
+            tk.END,
+            text
+        )
+
+        widget.config(
             state="disabled"
         )
 
-        self.canvas.delete(
-            "all"
-        )
 
-    # =========================================================
-    # ERROR
-    # =========================================================
-
-    def show_error(self, error):
-
-        self.set_status(
-            "● ANALYSIS ERROR",
-            "#ff4d4d"
-        )
-
-        messagebox.showerror(
-            "MailScope",
-            str(error)
-        )
-
-        self.scan_button.config(
-            state="normal",
-            text="▶  ANALYZE EMAIL"
-        )
-
-        self.import_button.config(
-            state="normal"
-        )
-
-    # =========================================================
-    # STATUS
-    # =========================================================
-
-    def set_status(self, text, color):
-
-        self.status_label.config(
-            text=text,
-            fg=color
-        )
-
-
-# =============================================================
+# ============================================================
 # START
-# =============================================================
+# ============================================================
 
 if __name__ == "__main__":
 
